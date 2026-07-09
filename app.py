@@ -510,12 +510,32 @@ if uploaded_file is not None:
                     "Revenue by Advertiser"
                 )
                 
-                slide.shapes.add_picture(
-                    str(chart_path),
-                    Inches(1),
-                    Inches(1.3),
-                    width=Inches(7)
+                advertiser_revenue = (
+                    agency_df.groupby("Advertiser")["Revenue_USD"]
+                    .sum()
+                    .sort_values(ascending=False)
+                    .head(5)
                 )
+                
+                advertiser_chart_path = (
+                    output_dir /
+                    f"{safe_name}_advertiser.png"
+                )
+                
+                plt.figure(figsize=(6,4))
+                
+                advertiser_revenue.plot(
+                    kind="bar",
+                    color="steelblue"
+                )
+                
+                plt.title("Top Advertisers")
+                
+                plt.tight_layout()
+                
+                plt.savefig(advertiser_chart_path)
+                
+                plt.close()
 
                 campaign_revenue = (
                     agency_df
