@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
+from pptx import Presentation
+from pptx.util import Inches
+import matplotlib.pyplot as plt
 from pathlib import Path
+import tempfile
+import zipfile
 
 # =====================================================
 # PAGE CONFIG
@@ -372,16 +377,9 @@ if uploaded_file is not None:
 
         if st.button("🚀 Generate Reports"):
 
-            output_dir = (
-                Path.home()
-                / "Documents"
-                / "RevenueReports"
-            )
-
-            output_dir.mkdir(
-                parents=True,
-                exist_ok=True
-            )
+            output_dir = Path(
+                tempfile.mkdtemp()
+                )
 
             summary = []
 
@@ -406,6 +404,235 @@ if uploaded_file is not None:
                     index=False,
                     engine="openpyxl"
                 )
+
+                ppt = Presentation()
+                
+                total_revenue = agency_df["Revenue_USD"].sum()
+                
+                avg_pacing = agency_df["Pacing_Pct"].mean()
+                
+                campaign_count = (
+                        agency_df["Campaign_Name"]
+                                .nunique()
+                                )
+                
+                advertiser_count = (
+                     agency_df["Advertiser"]
+                     .nunique()
+                     )
+                
+                slide = ppt.slides.add_slide(
+                     ppt.slide_layouts[0]
+                     )
+                
+                slide.shapes.title.text = (
+                        f"{agency} Revenue Report"
+                        )
+                
+                slide.placeholders[1].text = (
+                        "Executive Performance Summary"
+                        )
+                
+                textbox = slide.shapes.add_textbox(
+                     Inches(1),
+                    Inches(2),
+                     Inches(6),
+                    Inches(2)
+                    )
+                
+                textbox.text_frame.text = f"""
+                Total Revenue: ${total_revenue:,.0f}
+
+                Average Pacing: {avg_pacing:.1f}%
+
+                Campaigns: {campaign_count}
+
+                Advertisers: {advertiser_count}
+"""
+                
+                slide = ppt.slides.add_slide(
+                     ppt.slide_layouts[1]
+                     )
+                
+                slide.shapes.title.text = (
+                     "Revenue Summary"
+                     )
+                
+                top_advertiser = (
+                     agency_df.groupby(
+                          "Advertiser"
+                          )["Revenue_USD"]
+                          .sum()
+                          .idxmax()
+                          )
+                
+                
+                content = slide.placeholders[1]
+                
+                content.text = f"""
+                Total Revenue:
+                ${total_revenue:,.0f}
+
+                Top Advertiser:
+                {top_advertiser}
+
+                Active Campaigns:
+                {campaign_count}
+                
+                Average Pacing:
+                {avg_pacing:.1f}%
+"""
+
+                advertiser_revenue = (
+                     agency_df
+                     .groupby("Advertiser")
+                     ["Revenue_USD"]
+                     .sum()
+                     .sort_values(
+                         ascending=False
+                           )
+                    .head(5)
+                    )
+                
+                plt.figure(
+                     figsize=(6,4)
+                     )
+
+                advertiser_revenue.plot(
+                    kind="bar"
+                )
+
+                slide = ppt.slides.add_slide(
+                    ppt.slide_layouts[5]
+                )
+                
+                slide.shapes.title.text = (
+                    "Revenue by Advertiser"
+                )
+                
+                slide.shapes.add_picture(
+                    str(chart_path),
+                    Inches(1),
+                    Inches(1.3),
+                    width=Inches(7)
+                )
+
+                campaign_revenue = (
+                    agency_df
+                    .groupby("Campaign_Name")
+                    ["Revenue_USD"]
+                    .sum()
+                    .sort_values(
+                        ascending=False
+                    )
+                    .head(5)
+                )
+                
+                plt.figure(
+                    figsize=(6,4)
+                )
+                
+                campaign_revenue.plot(
+                    kind="barh"
+                )
+                
+                plt.title(
+                    "Top Campaigns"
+                )
+                
+                plt.tight_layout()
+                
+                campaign_chart = (
+                    output_dir /
+                    f"{safe_name}_campaign.png"
+                )
+                
+                plt.savefig(
+                    campaign_chart
+                )
+                
+                plt.close()
+                
+                slide = ppt.slides.add_slide(
+                    ppt.slide_layouts[5]
+                )
+                
+                slide.shapes.title.text = (
+                    "Campaign Performance"
+                )
+                
+                slide.shapes.add_picture(
+                    str(campaign_chart),
+                    Inches(1),
+                    Inches(1.3),
+                    width=Inches(7)
+                )
+                
+                slide = ppt.slides.add_slide(
+                    ppt.slide_layouts[1]
+                )
+                
+                slide.shapes.title.text = (
+                    "Key Takeaways"
+                )
+                
+                content = slide.placeholders[1]
+                
+                content.text = f"""
+                • Total Revenue generated:
+                ${total_revenue:,.0f}
+                
+                • Top Advertiser:
+                {top_advertiser}
+                
+                • Average Pacing:
+                {avg_pacing:.1f}%
+                
+                • Active Campaigns:
+                {campaign_count}
+                
+                • Advertisers:
+                {advertiser_count}
+                """
+
+                plt.title(
+                    "Top Advertisers"
+                )
+                
+                plt.tight_layout()
+                
+                chart_path = (
+                    output_dir /
+                    f"{safe_name}_advertiser.png"
+                )
+                
+                plt.savefig(chart_path)
+                
+                plt.close()
+                
+                ppt_path = (
+                     output_dir /
+                     f"{safe_name}.pptx"
+                     )
+                ppt.save(str(ppt_path))
+
+                
+                content = slide.placeholders[1]
+                
+                content.text = f"""
+                Total Revenue:
+                ${agency_df['Revenue_USD'].sum():,.0f}
+                
+                Average Pacing:
+                {agency_df['Pacing_Pct'].mean():.2f}%
+                Campaign Count:
+                {agency_df['Campaign_Name'].nunique()}
+
+                
+                
+                Advertiser Count:
+                {agency_df['Advertiser'].nunique()}
+"""
 
                 summary.append(
                     {
@@ -441,6 +668,28 @@ if uploaded_file is not None:
                 index=False,
                 engine="openpyxl"
             )
+
+            zip_file_path = (
+                output_dir /
+                "RevenueReports.zip"
+                )
+            
+            with zipfile.ZipFile(
+                zip_file_path,
+                "w",
+                zipfile.ZIP_DEFLATED
+                ) as zipf:
+                
+                for file in output_dir.iterdir():
+                    if file.suffix in [
+                        ".xlsx",
+                        ".pptx"
+                        ]:
+                        
+                        zipf.write(
+                            file,
+                            arcname=file.name
+                            )
 
             total_revenue = (
                 summary_df["Total Revenue"].sum()
@@ -492,25 +741,21 @@ if uploaded_file is not None:
             )
 
             st.success(
-                "🎉 Reports Generated Successfully"
-            )
-
-            st.markdown(
-                f"""
-                <div style="
-                background:{CARD_COLOR};
-                padding:15px;
-                border-radius:12px;
-                border:1px solid {BORDER_COLOR};
-                margin-top:10px;
-                color:{TEXT_COLOR};
-                ">
-                📁 <b>Reports Saved To</b><br>
-                {output_dir}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+                 "🎉 Reports Generated Successfully"
+                 )
+            
+            with open(
+                zip_file_path,
+                "rb"
+                ) as file:
+                
+                st.download_button(
+                    label="📥 Download All Reports",
+                    data=file,
+                    file_name="RevenueReports.zip",
+                    mime="application/zip",
+                    use_container_width=True
+                    )
 
     except Exception as e:
 
